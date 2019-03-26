@@ -1,0 +1,13 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<BorlandProject>
+	<Transactions>
+    <Transaction>1899-12-30 00:00:00.000.889,=C:\Users\Alex\Documents\RAD Studio\Projects\Unit1.cpp</Transaction>
+    <Transaction>1899-12-30 00:00:00.000.532,F:\Work\Projects\RADStudioXE2\CRTecControl\RTECControl.cbproj=C:\Users\Alex\Documents\RAD Studio\Projects\Project1.cbproj</Transaction>
+    <Transaction>1899-12-30 00:00:00.000.489,F:\Work\Projects\RADStudioXE2\CRTecControl\main.h=C:\Users\Alex\Documents\RAD Studio\Projects\Unit1.h</Transaction>
+    <Transaction>1899-12-30 00:00:00.000.489,F:\Work\Projects\RADStudioXE2\CRTecControl\main.cpp=C:\Users\Alex\Documents\RAD Studio\Projects\Unit1.cpp</Transaction>
+    <Transaction>1899-12-30 00:00:00.000.489,F:\Work\Projects\RADStudioXE2\CRTecControl\main.dfm=C:\Users\Alex\Documents\RAD Studio\Projects\Unit1.dfm</Transaction>
+    <Transaction>2018-11-19 09:09:33.000.899,=C:\Projects\RADStudioXE2\CRTecControl\options.cpp</Transaction>
+    <Transaction>2019-02-19 16:30:04.000.544,C:\Projects\RADStudioXE2\CRTecControl\RTECControl.cbproj=C:\Projects\RADStudioXE2\CRTecControl\IControl.cbproj</Transaction>
+    <Transaction>2019-03-26 08:50:39.868,=C:\Projects\RADStudioXE2\CRTecControl\Unit1.cpp</Transaction>
+  </Transactions>
+</BorlandProject>

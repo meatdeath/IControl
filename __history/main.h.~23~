@@ -1,0 +1,133 @@
+//---------------------------------------------------------------------------
+
+#ifndef mainH
+#define mainH
+//---------------------------------------------------------------------------
+#include <System.Classes.hpp>
+#include <Vcl.Controls.hpp>
+#include <Vcl.StdCtrls.hpp>
+#include <Vcl.Forms.hpp>
+#include <Vcl.ActnList.hpp>
+#include <Vcl.ComCtrls.hpp>
+#include <Vcl.ImgList.hpp>
+#include <Vcl.Menus.hpp>
+#include <Vcl.ToolWin.hpp>
+#include <Vcl.Buttons.hpp>
+#include <Vcl.ExtCtrls.hpp>
+#include <VCLTee.Chart.hpp>
+#include <VCLTee.TeEngine.hpp>
+#include <VCLTee.TeeProcs.hpp>
+#include <VCLTee.Series.hpp>
+#include <Vcl.Dialogs.hpp>
+#include <VCLTee.TeeSpline.hpp>
+//---------------------------------------------------------------------------
+
+typedef struct data_block DATA_BLOCK;
+struct data_block {
+	TDateTime time;
+	BYTE *current_arr;
+	WORD current_arr_len;
+	DATA_BLOCK *next;
+};
+
+//---------------------------------------------------------------------------
+
+class TMainForm : public TForm
+{
+__published:	// IDE-managed Components
+	TStatusBar *StatusBar1;
+	TToolBar *ToolBar;
+	TMainMenu *Menu;
+	TMenuItem *mmFile;
+	TMenuItem *mOptions;
+	TMenuItem *N1;
+	TMenuItem *N2;
+	TMenuItem *mConnect;
+	TMenuItem *mDisconnect;
+	TMenuItem *N3;
+	TActionList *Actions;
+	TMenuItem *mmAbout;
+	TMenuItem *mmView;
+	TMenuItem *mClear;
+	TAction *OptionsAction;
+	TAction *ConnectAction;
+	TAction *DisconnectAction;
+	TAction *ExitAction;
+	TAction *NewAction;
+	TAction *AboutAction;
+	TImageList *ImageList;
+	TToolButton *ToolButton3;
+	TSpeedButton *SpeedButton1;
+	TSpeedButton *SpeedButton2;
+	TSpeedButton *SpeedButton3;
+	TToolButton *ToolButton1;
+	TChart *Chart;
+	TTimer *Timer;
+	TScrollBar *ScrollBar;
+	TSpeedButton *SpeedButton4;
+	TSpeedButton *SpeedButton5;
+	TSpeedButton *SpeedButton6;
+	TAction *MagnifyPlusAction;
+	TAction *MagnifyMinusAction;
+	TSpeedButton *SpeedButton7;
+	TSpeedButton *SpeedButton8;
+	TAction *OpenAction;
+	TAction *SaveAction;
+	TMenuItem *N4;
+	TMenuItem *N5;
+	TSaveDialog *SaveDialog;
+	TOpenDialog *OpenDialog;
+	TMenuItem *N6;
+	TMenuItem *N7;
+	TLineSeries *CurrentSeries;
+	TPanel *Panel1;
+	TMemo *Memo1;
+	void __fastcall ExitActionExecute(TObject *Sender);
+	void __fastcall ConnectActionExecute(TObject *Sender);
+	void __fastcall ChartZoom(TObject *Sender);
+	void __fastcall DisconnectActionExecute(TObject *Sender);
+	void __fastcall ChartUndoZoom(TObject *Sender);
+	void __fastcall FormResize(TObject *Sender);
+	void __fastcall TimerTimer(TObject *Sender);
+	void __fastcall ScrollBarChange(TObject *Sender);
+	void __fastcall FormShow(TObject *Sender);
+	void __fastcall FormClose(TObject *Sender, TCloseAction &Action);
+	void __fastcall OpenActionExecute(TObject *Sender);
+	void __fastcall SaveActionExecute(TObject *Sender);
+	void __fastcall OptionsActionExecute(TObject *Sender);
+	void __fastcall NewActionExecute(TObject *Sender);
+	void __fastcall MagnifyPlusActionExecute(TObject *Sender);
+	void __fastcall MagnifyMinusActionExecute(TObject *Sender);
+	void __fastcall ChartMouseMove(TObject *Sender, TShiftState Shift, int X, int Y);
+	void __fastcall ChartMouseWheelDown(TObject *Sender, TShiftState Shift, TPoint &MousePos,
+          bool &Handled);
+	void __fastcall ChartMouseWheelUp(TObject *Sender, TShiftState Shift, TPoint &MousePos,
+          bool &Handled);
+
+private:	// User declarations
+	void __fastcall UpdateBarWidth();
+	void __fastcall GenerateData();
+	void __fastcall UpdateScroll();
+	void __fastcall UpdateActionState(int new_state);
+public:		// User declarations
+	__fastcall TMainForm(TComponent* Owner);
+	void __fastcall DataBlockAdd( TDateTime time, const void *data, WORD len );
+	void __fastcall DataClearAllBlocks();
+	DATA_BLOCK* __fastcall GetLastDataBlockPtr();
+	void __fastcall UpdateComBox();
+	void __fastcall RegistryWriteSettings();
+
+	__fastcall comThread;
+};
+
+class TComThread : public TThread
+{
+protected:
+    virtual void __fastcall Execute();
+public:
+    __fastcall TComThread();
+};
+//---------------------------------------------------------------------------
+extern PACKAGE TMainForm *MainForm;
+//---------------------------------------------------------------------------
+#endif
