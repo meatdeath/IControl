@@ -6,6 +6,7 @@
 #include "main.h"
 #include "options.h"
 #include "string.h"
+#include "stdio.h"
 #include <systdate.h>
 #include <DateUtils.Hpp>
 #include <Registry.hpp>
@@ -57,33 +58,49 @@ DATA_BLOCK *data_tail = NULL;
 int state = STATE_IDLE;
 //---------------------------------------------------------------------------
 
-void DataBlockAdd( TDateTime time, const void *data, WORD len )
+void DataBlockAdd( TDateTime time, const void *data_ptr, WORD len )
 {
-	DATA_BLOCK *new_data_block = new DATA_BLOCK;
-	new_data_block->time = time;
-	new_data_block->next = NULL;
-	new_data_block->current_arr = new BYTE(len);
 	int offset = 0;
+	BYTE *data = (char*)data_ptr;
 
+//	if( data_head == NULL ) {
+//		int err0 = 0, err1 = 0;
+//		for( int i = 0; i < len; i++ ) {
+//			if( (i&1) == 0 )
+//				err0 += (data[i]>0x07)?1:0;
+//			else
+//				err1 += (data[i]>0x07)?1:0;
+//		}
+//
+//		if( err0 > (len/2) && err1 > (len/2) )
+//			return;
+//
+//		if( err0 > err1 ) {
+//			offset = 1;
+//			len--;
+//		}
+//	}
+	DATA_BLOCK *new_data_block;
+	try {
+		new_data_block = new DATA_BLOCK;
+		new_data_block->time = time;
+		new_data_block->next = NULL;
+		new_data_block->current_arr = new BYTE(len);
 
-	if( data_tail == NULL ) {
-		for (offset = 0; offset < len; offset++) {
-			 if( ((unsigned char *)data)[offset] <= 0x03 )  break;
-			 len--;
+		memcpy( new_data_block->current_arr, &(data[offset]), len );
+		new_data_block->current_arr_len = len;
+
+		if( data_tail == NULL )
+		{
+			data_head = new_data_block;
+			data_tail = new_data_block;
 		}
-	}
-	memcpy( new_data_block->current_arr, &((unsigned char *)data)[offset], len );
-	new_data_block->current_arr_len = len;
-
-	if( data_tail == NULL )
-	{
-		data_head = new_data_block;
-		data_tail = new_data_block;
-	}
-	else
-	{
-		data_tail->next = new_data_block;
-		data_tail = data_tail->next;
+		else
+		{
+			data_tail->next = new_data_block;
+			data_tail = data_tail->next;
+		}
+	} catch (...) {
 	}
 }
 
@@ -222,11 +239,11 @@ int scroll_bar_page_size = 200;
 void __fastcall TMainForm::UpdateScroll()
 {
 	ScrollBar->Min = 0;
-	ScrollBar->Position = 0;
+	//ScrollBar->Position = 0;
 	if(!data_count) return;
-	ScrollBar->Max = data_count-1;
+	ScrollBar->Max = data_count;
 	ScrollBar->PageSize = scroll_bar_page_size;
-	ScrollBar->Position = ScrollBar->Max - ScrollBar->PageSize;
+	//ScrollBar->Position = ScrollBar->Max - ScrollBar->PageSize;
 	ScrollBar->LargeChange = scroll_bar_page_size;
 }
 //---------------------------------------------------------------------------
@@ -251,8 +268,12 @@ void __fastcall TMainForm::ConnectActionExecute(TObject *Sender)
 
 void __fastcall TMainForm::ChartZoom(TObject *Sender)
 {
+	Application->ProcessMessages();
+	scroll_bar_page_size = Chart->BottomAxis->Maximum - Chart->BottomAxis->Minimum;
 	UpdateScroll();
 	ScrollBar->Position = Chart->BottomAxis->Minimum;
+//	Chart->BottomAxis->Minimum = ScrollBar->Position;
+//	Chart->BottomAxis->Maximum = ScrollBar->Position + ScrollBar->PageSize;
 }
 //---------------------------------------------------------------------------
 
@@ -265,7 +286,15 @@ void __fastcall TMainForm::DisconnectActionExecute(TObject *Sender)
 
 void __fastcall TMainForm::ChartUndoZoom(TObject *Sender)
 {
+	Application->ProcessMessages();
+	scroll_bar_page_size = 200;
 	UpdateScroll();
+//	int pos = ScrollBar->Position - (200 - (Chart->BottomAxis->Maximum - Chart->BottomAxis->Minimum)) / 2;
+//	if ( (pos+scroll_bar_page_size) > data_count) {
+//		pos = data_count - scroll_bar_page_size;
+//	}
+//	if (pos < 0) pos = 0;
+//	ScrollBar->Position = pos;
 	ScrollBar->Position = Chart->BottomAxis->Minimum;
 }
 //---------------------------------------------------------------------------
@@ -277,19 +306,16 @@ void __fastcall TMainForm::FormResize(TObject *Sender)
 }
 //---------------------------------------------------------------------------
 
-#define PORT_FIFO_SIZE 200
-#define PACK_BUF_SIZE 10000
+#define BUF_SIZE 10000
 HANDLE hPort = NULL;
-DCB dcb;
-BYTE buf[PORT_FIFO_SIZE] = {0};
+BYTE buf[BUF_SIZE] = {0};
 BYTE buf_index = 0;
-BYTE pack[PACK_BUF_SIZE] = {0};
-int pack_length = 0;
 
-bool show_value_assebled = true;
+bool show_value_assembled = true;
 WORD show_value;
+int progress_color = 0;
 
-#define READ_BUF_SIZE  PORT_FIFO_SIZE
+#define READ_BUF_SIZE  BUF_SIZE
 
 
 void __fastcall TMainForm::TimerTimer(TObject *Sender)
@@ -300,64 +326,33 @@ void __fastcall TMainForm::TimerTimer(TObject *Sender)
 	Timer->Enabled = false;
 	switch( state )
 	{
+	case STATE_IDLE:
+		break;
+
 	case STATE_CONNECTING:
-//		hPort = CreateFile(
-//			("\\\\.\\"+Com).c_str(),     // address of name of the communications device
-//			GENERIC_READ | GENERIC_WRITE,          // access (read-write) mode
-//			0,                  // share mode
-//			NULL,               // address of security descriptor
-//			OPEN_EXISTING,      // how to create
-//			0,                  // file attributes
-//			NULL                // handle of file with attributes to copy
-//		);
-//		if( hPort == INVALID_HANDLE_VALUE )
-//		{
-//			Application->MessageBox( (L"Невозможно открыть порт "+ Com +L". Порт занят или не существует.").c_str(), L"Ошибка", MB_ICONERROR|MB_OK );
-//			UpdateActionState( STATE_IDLE );
-//			Timer->Enabled = false;
-//		}
-//		else
-//		{
-//			//LPCOMMTIMEOUTS com_timeouts = {
-//			COMMTIMEOUTS com_timeouts = {
-//				/*.ReadIntervalTimeout =*/ 100,
-//				/*.ReadTotalTimeoutMultiplier =*/ 100,
-//				/*.ReadTotalTimeoutConstant =*/ 100,
-//				/*.WriteTotalTimeoutMultiplier =*/ 100,
-//				/*.WriteTotalTimeoutConstant =*/ 100
-//			};
-//			fSuccess = SetCommTimeouts( hPort, &com_timeouts );
-//
-//			//  Initialize the DCB structure.
-//			SecureZeroMemory(&dcb, sizeof(DCB));
-//			dcb.DCBlength = sizeof(DCB);
-//
-//			//  Build on the current configuration by first retrieving all current
-//			//  settings.
-//			fSuccess = GetCommState(hPort, &dcb);
-//
-//			//  Fill in some DCB values and set the com state:
-//			//  Baudrate, 8 data bits, no parity, and 1 stop bit.
-//			dcb.BaudRate = Baudrate;      //  baud rate
-//			dcb.ByteSize = 8;             //  data size, xmit and rcv
-//			dcb.Parity   = NOPARITY;      //  parity bit
-//			dcb.StopBits = ONESTOPBIT;    //  stop bit
-//
-//			fSuccess = SetCommState(hPort, &dcb);
+		UpdateActionState( STATE_CONNECTED );
+		progress_color = 0;
+		StatusBar1->Panels->Items[0]->Text = L"Запись данных...";
+		show_value_assembled = true;
+		break;
 
-			UpdateActionState( STATE_CONNECTED );
-
-			Timer->Interval = 1;
-//		}
-		show_value_assebled = true;
+	case STATE_CONNECTED:
+		for( int x = 306; x <= 426; x += 24 ) {
+			StatusBar1->Canvas->Brush->Color = clGreen + progress_color;
+			StatusBar1->Canvas->Rectangle(x,5,x+20,16);
+			if( x <= 402 ) {
+				progress_color += 0x000800;
+				if( progress_color >= 0x003000 ) progress_color = 0;
+			}
+		}
 		break;
 
 	case STATE_DISCONNECTING:
 		break;
 
 	case STATE_DISCONNECTED:
-		Timer->Enabled = false;
-//		CloseHandle( hPort );
+		StatusBar1->Repaint();
+		StatusBar1->Panels->Items[0]->Text = L"";
 		UpdateActionState( STATE_IDLE );
 
 		data_count = 0;
@@ -368,23 +363,66 @@ void __fastcall TMainForm::TimerTimer(TObject *Sender)
 			TColor color;
 			UnicodeString time_str;
 			double value;
-			TDateTime time2 = data_ptr->time;
-			TDateTime time1 = time2 - (double)(20*(data_ptr->current_arr_len+((show_value_assebled)?1:0)/2-1));
 			//double tick = 0.020;
-			do {
-				for( int i = 0; i < data_ptr->current_arr_len; i++ ) {
-					show_value_assebled = !show_value_assebled;
 
-					if( show_value_assebled )
+			while(data_ptr) {
+				int err0 = 0, err1 = 0;
+				for( int i = 0; i < data_ptr->current_arr_len; i++ ) {
+					if( (i&1) == 0 )
+						err0 += (data_ptr->current_arr[i]>0x07)?1:0;
+					else
+						err1 += (data_ptr->current_arr[i]>0x07)?1:0;
+				}
+
+				if( err0 < (data_ptr->current_arr_len/2) || err1 < (data_ptr->current_arr_len/2) ) {
+					if( err0 > err1 ) {
+						show_value_assembled = false;
+					} else {
+						show_value_assembled = true;
+					}
+					break;
+				}
+				break;
+			}
+
+			const double data_byte_time = 1.0/(24.0*60.0*60.0*1000.0);
+			const double data_word_time = 2.0/(24.0*60.0*60.0*1000.0);
+
+			const double data_big_diff_time = 200.0/(24.0*60.0*60.0*1000.0);
+
+			TDateTime  time1 = 0;
+
+			while( data_ptr ) {
+				TDateTime time2 = data_ptr->time;
+				TDateTime time0 = time2 - (double) ( data_word_time * data_ptr->current_arr_len/2 );
+
+				if( time1.Val < (time0.Val-data_big_diff_time) ||
+					time1.Val > (time0.Val+data_big_diff_time) )
+				{
+                    time1 = time0;
+                }
+
+				if( !show_value_assembled && (data_ptr->current_arr_len&1) )
+					time1 -= data_word_time;
+				else
+				if(  show_value_assembled && (data_ptr->current_arr_len&1) )
+					time1 -= data_byte_time;
+				else
+				if( !show_value_assembled && !(data_ptr->current_arr_len&1) )
+					time1 += data_byte_time;
+
+				for( int i = 0; i < data_ptr->current_arr_len; i++ ) {
+					show_value_assembled = !show_value_assembled;
+
+					if( show_value_assembled )
 					{
 						show_value |= data_ptr->current_arr[i];
 						color = clGreen;
 						value = (double)show_value;
 						if( value >= 1000 ) color = clRed;
-						time_str = time1.FormatString("hh:nn:ss.zzz");
+						time_str = time1.FormatString("HH:nn:ss.zzz");
 						CurrentSeries->AddXY( data_count++, value, time_str, color );
-						//time1 = time1 + tick;
-						time1 += 0.001;
+						time1 += 2 * (1.0/(24.0*60.0*60.0*1000.0));
 						dataSaved = false;
 //						str.sprintf(L"%02X %02X : ",buf[i], buf[i+1]);
 //						line+=str;
@@ -395,84 +433,11 @@ void __fastcall TMainForm::TimerTimer(TObject *Sender)
 				}
 				data_ptr = data_ptr->next;
 			}
-			while( data_ptr );
 			UpdateScroll();
 			ScrollBar->Position = ScrollBar->Max - ScrollBar->PageSize;
 		}
 
 		break;
-
-	case STATE_CONNECTED:
-		{
-			DWORD /*bytes_to_read = 1,*/ bytes_read = 0;
-			UnicodeString line = "";
-			//bool data_ready = false;
-
-//			do
-//			{
-//				fSuccess = ReadFile( hPort, buf, (PORT_FIFO_SIZE/8), &bytes_read, NULL );
-//				if( bytes_read )
-//					DataBlockAdd( Now(), buf, bytes_read );
-//				Application->ProcessMessages();
-//			}
-//			while( bytes_read && state == STATE_CONNECTED);
-
-
-
-//			while( bytes_read == PORT_FIFO_SIZE ) {
-//				fSuccess = ReadFile( hPort, buf, bytes_to_read, &bytes_read, NULL );
-//				if( !fSuccess )
-//				{
-//					Memo1->Lines->Add("--------------- ERROR DETECTED --------------" );
-//					break;
-//				}
-//
-//				if (bytes_read) {
-////					if (bytes_read&1) {
-////						DWORD bytes_read2 = 0;
-////
-////						fSuccess = ReadFile( hPort, buf+bytes_read, 1, &bytes_read2, NULL );
-////						bytes_read += bytes_read2;
-////					}
-//					TDateTime time1, time2;
-//					TDateTime tick = 20;
-//					time2 = Now();
-//					time1 = time2 - (double)(20*(bytes_read/2-1));
-//					DWORD i;
-//					TColor color;
-//					UnicodeString time_str;
-//					double value;
-//
-//					UnicodeString str;
-//
-//					for( i = 0; i < bytes_read; i+=2, data_count++ )
-//					{
-//						color = clGreen;
-//						//value = data_tail->current_arr[i];
-//						value = (double)((((WORD)buf[i+1])<<8) + buf[i]);
-//						if( value >= 1000 ) color = clRed;
-//						time_str = time1.FormatString("hh:nn:ss.zzz");
-//						// time_str = time.TimeString();
-//						CurrentSeries->AddXY( data_count, value, time_str, color );
-//						time1 = time1 + tick;
-//						dataSaved = false;
-//						str.sprintf(L"%02X %02X : ",buf[i], buf[i+1]);
-//						line+=str;
-//					}
-//					Timer->Interval = 1;
-//
-//					//ScrollBar->Max = data_count;
-//
-//				//DataBlockAdd( time1, buf,  );
-//				}
-//			}
-//			if( data_count > 100 )
-//				ScrollBar->Max = data_count;
-//			UpdateScroll();
-//			Memo1->Lines->Add(line);
-
-			break;
-		}
 	}
 
 	Timer->Enabled = true;
@@ -688,165 +653,6 @@ void __fastcall TComThread::Execute()
 
     if (hComm != NULL )    ::CloseHandle( hComm );
 
-//	HANDLE hComm;
-//	hComm = CreateFile( gszPort,
-//						GENERIC_READ | GENERIC_WRITE,
-//						0,
-//						0,
-//						OPEN_EXISTING,
-//						FILE_FLAG_OVERLAPPED,
-//						0);
-//
-//	if (hComm != INVALID_HANDLE_VALUE)  {
-//
-//		#define STATUS_CHECK_TIMEOUT      500   // Milliseconds
-//
-//		//-----------------------
-//
-//		COMSTAT comStat;
-//		DWORD   dwErrors;
-//		BOOL    fOOP, fOVERRUN, fPTO, fRXOVER, fRXPARITY, fTXFULL;
-//		BOOL    fBREAK, fDNS, fFRAME, fIOE, fMODE;
-//		// Get and clear current errors on the port.
-//		if (!ClearCommError(hComm, &dwErrors, &comStat))
-//			// Report error in ClearCommError.
-//			return;
-//
-//		//-------------------------
-//
-//		DCB dcb;
-//
-//		FillMemory(&dcb, sizeof(dcb), 0);
-//		if (!GetCommState(hComm, &dcb))     // get current DCB
-//		  // Error in GetCommState
-//		  return;
-//
-//		// Update DCB rate.
-//		dcb.BaudRate = CBR_115200 ;
-//
-//		// Set new state.
-//		if (!SetCommState(hComm, &dcb))
-//		  // Error in SetCommState. Possibly a problem with the communications
-//		  // port handle or a problem with the DCB structure itself.
-//		  return;
-//
-//		//-------------------------
-//
-//		COMMTIMEOUTS timeouts;
-//
-//		timeouts.ReadIntervalTimeout = 20;
-//		timeouts.ReadTotalTimeoutMultiplier = 10;
-//		timeouts.ReadTotalTimeoutConstant = 100;
-//		timeouts.WriteTotalTimeoutMultiplier = 10;
-//		timeouts.WriteTotalTimeoutConstant = 100;
-//
-//		if (!SetCommTimeouts(hComm, &timeouts))
-//		   // Error setting time-outs.
-//		   return;
-//
-//		//-------------------------
-//
-//
-//		DWORD      dwRes;
-//		DWORD      dwCommEvent;
-//		DWORD      dwStoredFlags;
-//		DWORD	   dwOvRes;
-//		BOOL      fWaitingOnStat = FALSE;
-//		OVERLAPPED osStatus = {0};
-//
-//		dwStoredFlags = EV_BREAK | EV_CTS | EV_DSR | EV_ERR | EV_RING |\
-//					  EV_RLSD | EV_RXCHAR | EV_RXFLAG | EV_TXEMPTY ;
-//		if (!SetCommMask(hComm/*comHandle*/, dwStoredFlags)) {
-//			// error setting communications mask; abort
-//			return;
-//		}
-//
-//		osStatus.hEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
-//		if (osStatus.hEvent == NULL) {
-//			// error creating event; abort
-//			return;
-//		}
-//
-//		//-------------------------
-//
-//		for ( ; ; ) {
-//			if (!fWaitingOnStat) {
-//			   // Issue read operation.
-//			   if (!ReadFile(hComm, buf, READ_BUF_SIZE, &dwRead, &osReader)) {
-//				  if (GetLastError() != ERROR_IO_PENDING)     // read not delayed?
-//					 // Error in communications; report it.
-//				  else
-//					 fWaitingOnStat = TRUE;
-//			   }
-//			   else {
-//				  // read completed immediately
-//				  HandleASuccessfulRead(lpBuf, dwRead);
-//				}
-//			}
-//			// Issue a status event check if one hasn't been issued already.
-//			if (!fWaitingOnStat) {
-//				if (!WaitCommEvent(hComm, &dwCommEvent, &osStatus)) {
-//					if (GetLastError() == ERROR_IO_PENDING)
-//					   //bWaitingOnStatusHandle = TRUE;
-//					   ;
-//					else
-//					   // error in WaitCommEvent; abort
-//					   break;
-//				}
-//				else
-//					// WaitCommEvent returned immediately.
-//					// Deal with status event as appropriate.
-//					ReportStatusEvent(dwCommEvent);
-//			}
-//
-//			// Check on overlapped operation.
-//			if (fWaitingOnStat) {
-//				// Wait a little while for an event to occur.
-//				dwRes = WaitForSingleObject(osStatus.hEvent, STATUS_CHECK_TIMEOUT);
-//				switch(dwRes)
-//				{
-//				 // Event occurred.
-//				 case WAIT_OBJECT_0:
-//					 if (!GetOverlappedResult(hComm, &osStatus, &dwOvRes, FALSE))
-//						// An error occurred in the overlapped operation;
-//						// call GetLastError to find out what it was
-//						// and abort if it is fatal.
-//						;
-//					 else
-//						// Status event is stored in the event flag
-//						// specified in the original WaitCommEvent call.
-//						// Deal with the status event as appropriate.
-//						ReportStatusEvent(dwCommEvent);
-//
-//					 // Set fWaitingOnStat flag to indicate that a new
-//					 // WaitCommEvent is to be issued.
-//					 fWaitingOnStat = FALSE;
-//					 break;
-//
-//				 case WAIT_TIMEOUT:
-//					 // Operation isn't complete yet. fWaitingOnStatusHandle flag
-//					 // isn't changed since I'll loop back around and I don't want
-//					 // to issue another WaitCommEvent until the first one finishes.
-//					 //
-//					 // This is a good time to do some background work.
-//					DoBackgroundWork();
-//					 break;
-//
-//				 default:
-//					 // Error in the WaitForSingleObject; abort
-//					 // This indicates a problem with the OVERLAPPED structure's
-//					 // event handle.
-//					CloseHandle(osStatus.hEvent);
-//					return;
-//				}
-//			}
-//		}
-//
-//		CloseHandle(osStatus.hEvent);
-//
-//	} else {
-//		// error opening port; abort
-//	}
 //
 //	// if you need to access the UI controls,
 //	// use the TThread::Synchornize() method for that
@@ -880,12 +686,21 @@ void __fastcall TMainForm::FormShow(TObject *Sender)
 			MainForm->Left   = Reg->ReadInteger( "WindowLeft" );
 			MainForm->Top    = Reg->ReadInteger( "WindowTop" );
 			MainForm->Width  = Reg->ReadInteger( "WindowWidth" );
-            MainForm->Height = Reg->ReadInteger( "WindowHeight" );
-        }
+			MainForm->Height = Reg->ReadInteger( "WindowHeight" );
+			AxisLog = Reg->ReadBool( "AxisLog" );
+			AxisLogBase = Reg->ReadFloat( "AxisLogBase" );
+		}
 		catch(...)
 		{
+			AxisLog = false;
+			AxisLogBase = 10;
 			//MessageBox( NULL, (wchar_t*)"Error occured while reading window position from registry!", (wchar_t*)"Error", MB_OK|MB_ICONERROR );
 		}
+
+		Chart->LeftAxis->Logarithmic = AxisLog;
+		Chart->LeftAxis->LogarithmicBase = AxisLogBase;
+		OptionsForm->LogCheckBox->Checked = AxisLog;
+		OptionsForm->LogBaseEdit->Text = AxisLogBase;
 
         try
 		{
@@ -968,8 +783,8 @@ void __fastcall TMainForm::RegistryWriteSettings()
 	{
 		Reg->WriteString( "Port", Com );
 		Reg->WriteInteger( "Baudrate", Baudrate );
-		Reg->WriteInteger( "AxisLog", 		AxisLog );
-		Reg->WriteInteger( "AxisLogBase", 	AxisLogBase );
+		Reg->WriteBool( "AxisLog", 		AxisLog );
+		Reg->WriteFloat( "AxisLogBase", 	AxisLogBase );
 		Reg->WriteInteger( "WindowLeft",    MainForm->Left );
 		Reg->WriteInteger( "WindowTop",     MainForm->Top );
 		Reg->WriteInteger( "WindowWidth",   MainForm->Width );
@@ -1061,6 +876,8 @@ void __fastcall TMainForm::OpenActionExecute(TObject *Sender)
 }
 //---------------------------------------------------------------------------
 
+#define MAX_SIZE 256
+
 void __fastcall TMainForm::SaveActionExecute(TObject *Sender)
 {
 	char szFileName[MAXFILE+4];
@@ -1075,11 +892,111 @@ void __fastcall TMainForm::SaveActionExecute(TObject *Sender)
 			RenameFile(SaveDialog->FileName, szFileName);
 		}
 		iFileHandle = FileCreate(SaveDialog->FileName);
-		DATA_BLOCK *ptr = data_head;
-		while( ptr != NULL )
-		{
-			FileWrite(iFileHandle, (char*)ptr, sizeof(DATA_BLOCK));
-			ptr = ptr->next;
+//		DATA_BLOCK *ptr = data_head;
+//		while( ptr != NULL )
+//		{
+//			FileWrite(iFileHandle, (char*)ptr, sizeof(DATA_BLOCK));
+//			ptr = ptr->next;
+//		}
+		if( data_head != NULL ) {
+
+			DATA_BLOCK *data_ptr = data_head;
+			//TColor color;
+			UnicodeString time_str;
+			UnicodeString date_str;
+			double value;
+			char mbstring[MAX_SIZE];
+			//double tick = 0.020;
+
+			while(data_ptr) {
+				int err0 = 0, err1 = 0;
+				for( int i = 0; i < data_ptr->current_arr_len; i++ ) {
+					if( (i&1) == 0 )
+						err0 += (data_ptr->current_arr[i]>0x07)?1:0;
+					else
+						err1 += (data_ptr->current_arr[i]>0x07)?1:0;
+				}
+
+				if( err0 < (data_ptr->current_arr_len/2) || err1 < (data_ptr->current_arr_len/2) ) {
+					if( err0 > err1 ) {
+						show_value_assembled = false;
+					} else {
+						show_value_assembled = true;
+					}
+					break;
+				}
+				break;
+			}
+
+			const double data_byte_time = 1.0/(24.0*60.0*60.0*1000.0);
+			const double data_word_time = 2.0/(24.0*60.0*60.0*1000.0);
+
+			const double data_big_diff_time = 200.0/(24.0*60.0*60.0*1000.0);
+
+			TDateTime  time1 = 0;
+
+			sprintf(mbstring,"Unix time,Date,Time,Current (A)\n");
+			FileWrite(iFileHandle, mbstring, strlen(mbstring));
+
+			while( data_ptr ) {
+				TDateTime time2 = data_ptr->time;
+				TDateTime time0 = time2 - (double) ( data_word_time * data_ptr->current_arr_len/2 );
+
+				if( time1.Val < (time0.Val-data_big_diff_time) ||
+					time1.Val > (time0.Val+data_big_diff_time) )
+				{
+                    time1 = time0;
+                }
+
+				if( !show_value_assembled && (data_ptr->current_arr_len&1) )
+					time1 -= data_word_time;
+				else
+				if(  show_value_assembled && (data_ptr->current_arr_len&1) )
+					time1 -= data_byte_time;
+				else
+				if( !show_value_assembled && !(data_ptr->current_arr_len&1) )
+					time1 += data_byte_time;
+
+				for( int i = 0; i < data_ptr->current_arr_len; i++ ) {
+					show_value_assembled = !show_value_assembled;
+
+					if( show_value_assembled )
+					{
+						show_value |= data_ptr->current_arr[i];
+						//color = clGreen;
+						//value = (double)show_value;
+						//if( value >= 1000 ) color = clRed;
+						date_str = time1.FormatString("YYYY-MM-DD");
+						time_str = time1.FormatString("HH:nn:ss.zzz");
+						//CurrentSeries->AddXY( data_count++, value, time_str, color );
+
+						sprintf( mbstring, "%llu%s,", DateTimeToUnix(time1), time1.FormatString("zzz").c_str() );
+						FileWrite(iFileHandle, mbstring, strlen(mbstring));
+
+						wcstombs(mbstring,date_str.c_str(),MAX_SIZE);
+						FileWrite(iFileHandle, mbstring, strlen(mbstring));
+
+						FileWrite(iFileHandle, ",", 1);
+
+						wcstombs(mbstring,time_str.c_str(),MAX_SIZE);
+						FileWrite(iFileHandle, mbstring, strlen(mbstring));
+
+						FileWrite(iFileHandle, ",", 1);
+
+						sprintf(mbstring,"%d\n",show_value);
+						FileWrite(iFileHandle, mbstring, strlen(mbstring));
+
+						time1 += 2 * (1.0/(24.0*60.0*60.0*1000.0));
+					}  else {
+						show_value = data_ptr->current_arr[i];
+						show_value <<= 8;
+					}
+				}
+				//dataSaved = true;
+				data_ptr = data_ptr->next;
+			}
+			UpdateScroll();
+			ScrollBar->Position = ScrollBar->Max - ScrollBar->PageSize;
 		}
 		FileClose(iFileHandle);
 	}
@@ -1090,7 +1007,7 @@ void __fastcall TMainForm::OptionsActionExecute(TObject *Sender)
 {
 	UpdateComBox();
 
-    if( OptionsForm->ShowModal() == mrOk )
+	if( OptionsForm->ShowModal() == mrOk )
 	{
         OptionsForm->PortBox->Text = OptionsForm->PortBox->Text.UpperCase();
         Com =  OptionsForm->PortBox->Text;
@@ -1102,7 +1019,7 @@ void __fastcall TMainForm::OptionsActionExecute(TObject *Sender)
 		Application->Title = APP_NAME + " - " + Com;
 		AxisLog = OptionsForm->LogCheckBox->Checked;
 		Chart->LeftAxis->Logarithmic = AxisLog;
-		AxisLogBase = StrToIntDef(OptionsForm->LogBaseEdit->Text, 10);
+		AxisLogBase = StrToFloatDef(OptionsForm->LogBaseEdit->Text, 10);
 		Chart->LeftAxis->LogarithmicBase = AxisLogBase;
 	}
 }
@@ -1255,61 +1172,62 @@ void __fastcall TMainForm::UpdateComBox()
 }
 
 int margin_left = 56;
-int margin_right = 52;
+int margin_right = 10;
 int margin_top = 15;
 int margin_bottom = 40;
 bool value_hinted = false;
 void __fastcall TMainForm::ChartMouseMove(TObject *Sender, TShiftState Shift, int X,
           int Y)
 {
-//	if( data_count == 0 ) return;
-//	double XVal, YVal, valy, valy2;
-//	int SXVal, SYVal;
-//	UnicodeString str;
-//	if( X < 0 || Y < 0 ) return;
-//	CurrentSeries->GetCursorValues( XVal, YVal );
-//	SXVal = Chart->Walls->Back->Width;
-//	SXVal = (int)((XVal>=0)?(XVal+0.5):-1);
-//	SYVal = (int)((YVal>=0)?(YVal+0.5):-1);
-//
-//	if( SXVal >= Chart->BottomAxis->Minimum && SXVal <= Chart->BottomAxis->Maximum &&
-//		 SYVal >= Chart->LeftAxis->Minimum && SYVal <= Chart->LeftAxis->Maximum )
-//	{
-//		value_hinted = true;
-//		valy = CurrentSeries->YValues->Value[SXVal];
-//		str = CurrentSeries->Labels->Labels[SXVal];
-//		Chart->Repaint();
-//
-//		int dx, dy;
-//		if( SXVal > ((Chart->BottomAxis->Maximum+Chart->BottomAxis->Minimum)/2) )
-//			dx = -160;
-//		else
-//			dx = 10;
-//		if( SYVal < ((Chart->LeftAxis->Maximum+Chart->LeftAxis->Minimum)/2) )
-//			dy = -60;
-//		else
-//			dy = 10;
-//
-//		int x_size = Chart->Width;
-//		int y_size = Chart->Height;
-//
-//		Chart->Canvas->Pen->Color = clBlack;
-//		Chart->Canvas->MoveTo( margin_left, Y );
-//		Chart->Canvas->LineTo( x_size-margin_right, Y );
-//		Chart->Canvas->MoveTo( X, margin_top );
-//		Chart->Canvas->LineTo( X, y_size-margin_bottom );
-//
-//		Chart->Canvas->Brush->Color = clWhite;
-//		Chart->Canvas->Rectangle(X+dx,Y+dy,X+dx+150,Y+dy+50);
-//
-//
-//		Chart->Canvas->TextOutW(X+dx+10,Y+dy+5,L"Время: "+str);
-//		Chart->Canvas->TextOutW(X+dx+10,Y+dy+17,L"Ток: "+FormatFloat("#", valy)+L" A");
-//		Chart->Canvas->TextOutW(X+dx+10,Y+dy+29,L"Сопротивление: "+FormatFloat("#", valy2)+L" Ом");
-//	} else {
-//		value_hinted = false;
-//		Chart->Repaint();
-//	}
+	if( data_count == 0 ) return;
+	double XVal, YVal, valy, valy2;
+	int SXVal, SYVal;
+	UnicodeString str;
+	if( X < 0 || Y < 0 ) return;
+	CurrentSeries->GetCursorValues( XVal, YVal );
+	SXVal = Chart->Walls->Back->Width;
+	SXVal = (int)((XVal>=0)?(XVal+0.5):-1);
+	SYVal = (int)((YVal>=0)?(YVal+0.5):-1);
+
+	if( SXVal >= Chart->BottomAxis->Minimum && SXVal <= Chart->BottomAxis->Maximum &&
+		 SYVal >= Chart->LeftAxis->Minimum && SYVal <= Chart->LeftAxis->Maximum )
+	{
+		value_hinted = true;
+		valy = CurrentSeries->YValues->Value[SXVal];
+		str = CurrentSeries->Labels->Labels[SXVal];
+		Chart->Repaint();
+
+		int dx, dy;
+		if( SXVal > ((Chart->BottomAxis->Maximum+Chart->BottomAxis->Minimum)/2) )
+			dx = -160;
+		else
+			dx = 10;
+		if( SYVal < ((Chart->LeftAxis->Maximum+Chart->LeftAxis->Minimum)/2) )
+			dy = -60;
+		else
+			dy = 10;
+
+		int x_size = Chart->Width;
+		int y_size = Chart->Height;
+
+		Chart->Canvas->Pen->Color = clBlack;
+		Chart->Canvas->MoveTo( margin_left, Y );
+		Chart->Canvas->LineTo( x_size-margin_right, Y );
+		Chart->Canvas->MoveTo( X, margin_top );
+		Chart->Canvas->LineTo( X, y_size-margin_bottom );
+
+		// Hint rectangle
+		Chart->Canvas->Brush->Color = clWhite;
+		Chart->Canvas->Rectangle(X+dx,Y+dy,X+dx+120,Y+dy+35);
+
+		// Hint text
+		Chart->Canvas->TextOutW(X+dx+10,Y+dy+5,L"Время: "+str);
+		Chart->Canvas->TextOutW(X+dx+10,Y+dy+17,L"Ток: "+FormatFloat("#", valy)+L" A");
+		//Chart->Canvas->TextOutW(X+dx+10,Y+dy+29,L"Сопротивление: "+FormatFloat("#", valy2)+L" Ом");
+	} else {
+		value_hinted = false;
+		Chart->Repaint();
+	}
 }
 //---------------------------------------------------------------------------
 

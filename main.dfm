@@ -33,7 +33,6 @@ object MainForm: TMainForm
       item
         Width = 50
       end>
-    ExplicitTop = 476
   end
   object ToolBar: TToolBar
     Left = 0
@@ -1235,10 +1234,16 @@ object MainForm: TMainForm
     Top = 8
   end
   object SaveDialog: TSaveDialog
+    Filter = 
+      'Excel compatible file (*.csv)|*.csv|Text File (*.txt)|*.txt|Any ' +
+      'file (*.*)|*.*'
     Left = 424
     Top = 8
   end
   object OpenDialog: TOpenDialog
+    Filter = 
+      'Supported CSV or TXT file types (*.csv, *.txt)|*.csv;*.txt|All f' +
+      'iles (*.*)|*.*'
     Left = 496
     Top = 8
   end

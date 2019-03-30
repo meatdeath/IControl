@@ -2,7 +2,7 @@ object MainForm: TMainForm
   Left = 0
   Top = 0
   Caption = 'I Control'
-  ClientHeight = 495
+  ClientHeight = 494
   ClientWidth = 800
   Color = clBtnFace
   Font.Charset = DEFAULT_CHARSET
@@ -12,6 +12,7 @@ object MainForm: TMainForm
   Font.Style = []
   Menu = Menu
   OldCreateOrder = False
+  Position = poDesigned
   OnClose = FormClose
   OnResize = FormResize
   OnShow = FormShow
@@ -19,10 +20,19 @@ object MainForm: TMainForm
   TextHeight = 13
   object StatusBar1: TStatusBar
     Left = 0
-    Top = 476
+    Top = 475
     Width = 800
     Height = 19
-    Panels = <>
+    Panels = <
+      item
+        Width = 300
+      end
+      item
+        Width = 150
+      end
+      item
+        Width = 50
+      end>
   end
   object ToolBar: TToolBar
     Left = 0
@@ -126,8 +136,8 @@ object MainForm: TMainForm
   object Chart: TChart
     Left = 0
     Top = 30
-    Width = 800
-    Height = 429
+    Width = 688
+    Height = 428
     Cursor = crCross
     AllowPanning = pmHorizontal
     Legend.Visible = False
@@ -166,6 +176,7 @@ object MainForm: TMainForm
     RightAxis.Title.Font.Color = clBlue
     View3D = False
     Zoom.Animated = True
+    Zoom.AnimatedSteps = 1
     Zoom.Direction = tzdHorizontal
     Align = alClient
     BevelOuter = bvNone
@@ -173,6 +184,7 @@ object MainForm: TMainForm
     OnMouseMove = ChartMouseMove
     OnMouseWheelDown = ChartMouseWheelDown
     OnMouseWheelUp = ChartMouseWheelUp
+    ExplicitHeight = 429
     PrintMargins = (
       15
       25
@@ -208,7 +220,7 @@ object MainForm: TMainForm
   end
   object ScrollBar: TScrollBar
     Left = 0
-    Top = 459
+    Top = 458
     Width = 800
     Height = 17
     Align = alBottom
@@ -216,6 +228,28 @@ object MainForm: TMainForm
     TabOrder = 3
     TabStop = False
     OnChange = ScrollBarChange
+    ExplicitTop = 459
+  end
+  object Panel1: TPanel
+    Left = 688
+    Top = 30
+    Width = 112
+    Height = 428
+    Align = alRight
+    Caption = 'Panel1'
+    TabOrder = 4
+    Visible = False
+    ExplicitHeight = 429
+    object Memo1: TMemo
+      Left = 1
+      Top = 1
+      Width = 110
+      Height = 426
+      Align = alClient
+      ScrollBars = ssVertical
+      TabOrder = 0
+      ExplicitHeight = 427
+    end
   end
   object Menu: TMainMenu
     Images = ImageList
@@ -342,7 +376,7 @@ object MainForm: TMainForm
     Left = 568
     Top = 8
     Bitmap = {
-      494C010112002400D80012001200FFFFFFFFFF10FFFFFFFFFFFFFFFF424D3600
+      494C010112002400F40012001200FFFFFFFFFF10FFFFFFFFFFFFFFFF424D3600
       0000000000003600000028000000480000005A00000001002000000000004065
       0000000000000000000000000000000000000000000000000000000000000000
       0000000000000000000000000000000000000000000000000000000000000000

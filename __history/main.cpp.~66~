@@ -6,6 +6,7 @@
 #include "main.h"
 #include "options.h"
 #include "string.h"
+#include "stdio.h"
 #include <systdate.h>
 #include <DateUtils.Hpp>
 #include <Registry.hpp>
@@ -362,8 +363,6 @@ void __fastcall TMainForm::TimerTimer(TObject *Sender)
 			TColor color;
 			UnicodeString time_str;
 			double value;
-			TDateTime time2 = data_ptr->time;
-			TDateTime time1 = time2 - (double)(20*(data_ptr->current_arr_len+((show_value_assembled)?1:0)/2-1));
 			//double tick = 0.020;
 
 			while(data_ptr) {
@@ -380,13 +379,38 @@ void __fastcall TMainForm::TimerTimer(TObject *Sender)
 						show_value_assembled = false;
 					} else {
 						show_value_assembled = true;
-                    }
+					}
 					break;
 				}
 				break;
 			}
 
+			const double data_byte_time = 1.0/(24.0*60.0*60.0*1000.0);
+			const double data_word_time = 2.0/(24.0*60.0*60.0*1000.0);
+
+			const double data_big_diff_time = 200.0/(24.0*60.0*60.0*1000.0);
+
+			TDateTime  time1 = 0;
+
 			while( data_ptr ) {
+				TDateTime time2 = data_ptr->time;
+				TDateTime time0 = time2 - (double) ( data_word_time * data_ptr->current_arr_len/2 );
+
+				if( time1.Val < (time0.Val-data_big_diff_time) ||
+					time1.Val > (time0.Val+data_big_diff_time) )
+				{
+                    time1 = time0;
+                }
+
+				if( !show_value_assembled && (data_ptr->current_arr_len&1) )
+					time1 -= data_word_time;
+				else
+				if(  show_value_assembled && (data_ptr->current_arr_len&1) )
+					time1 -= data_byte_time;
+				else
+				if( !show_value_assembled && !(data_ptr->current_arr_len&1) )
+					time1 += data_byte_time;
+
 				for( int i = 0; i < data_ptr->current_arr_len; i++ ) {
 					show_value_assembled = !show_value_assembled;
 
@@ -485,7 +509,7 @@ BOOL ReadComPort(HANDLE hComm, char * lpBuf, DWORD &dwRead) {
     if (!fSuccess) {
 
         //if (::GetLastError() != ERROR_IO_PENDING) {
-        if (false) {
+		if (false) {
 
             // WriteFile failed, but isn't delayed. Report error and abort.
 			fRes = FALSE;
@@ -647,6 +671,8 @@ void __fastcall TMainForm::ThreadTerminated(TObject *Sender)
 void __fastcall TMainForm::FormShow(TObject *Sender)
 {
 
+	OpenDialog->InitialDir = GetCurrentDir();
+	SaveDialog->InitialDir = GetCurrentDir();
 	UpdateComBox();
 
 	AnsiString com;
@@ -852,6 +878,8 @@ void __fastcall TMainForm::OpenActionExecute(TObject *Sender)
 }
 //---------------------------------------------------------------------------
 
+#define MAX_SIZE 256
+
 void __fastcall TMainForm::SaveActionExecute(TObject *Sender)
 {
 	char szFileName[MAXFILE+4];
@@ -866,11 +894,110 @@ void __fastcall TMainForm::SaveActionExecute(TObject *Sender)
 			RenameFile(SaveDialog->FileName, szFileName);
 		}
 		iFileHandle = FileCreate(SaveDialog->FileName);
-		DATA_BLOCK *ptr = data_head;
-		while( ptr != NULL )
-		{
-			FileWrite(iFileHandle, (char*)ptr, sizeof(DATA_BLOCK));
-			ptr = ptr->next;
+//		DATA_BLOCK *ptr = data_head;
+//		while( ptr != NULL )
+//		{
+//			FileWrite(iFileHandle, (char*)ptr, sizeof(DATA_BLOCK));
+//			ptr = ptr->next;
+//		}
+		if( data_head != NULL ) {
+
+			DATA_BLOCK *data_ptr = data_head;
+			//TColor color;
+			UnicodeString time_str;
+			UnicodeString date_str;
+			double value;
+			char mbstring[MAX_SIZE];
+			//double tick = 0.020;
+
+			while(data_ptr) {
+				int err0 = 0, err1 = 0;
+				for( int i = 0; i < data_ptr->current_arr_len; i++ ) {
+					if( (i&1) == 0 )
+						err0 += (data_ptr->current_arr[i]>0x07)?1:0;
+					else
+						err1 += (data_ptr->current_arr[i]>0x07)?1:0;
+				}
+
+				if( err0 < (data_ptr->current_arr_len/2) || err1 < (data_ptr->current_arr_len/2) ) {
+					if( err0 > err1 ) {
+						show_value_assembled = false;
+					} else {
+						show_value_assembled = true;
+					}
+					break;
+				}
+				break;
+			}
+
+			const double data_byte_time = 1.0/(24.0*60.0*60.0*1000.0);
+			const double data_word_time = 2.0/(24.0*60.0*60.0*1000.0);
+
+			const double data_big_diff_time = 200.0 * data_byte_time;
+
+			TDateTime  time1 = 0;
+
+			sprintf(mbstring,"Unix time (ms),Date,Time,Current (A)\n");
+			FileWrite(iFileHandle, mbstring, strlen(mbstring));
+
+			while( data_ptr ) {
+				TDateTime time2 = data_ptr->time;
+				TDateTime time0 = time2 - (double) ( data_word_time * data_ptr->current_arr_len/2 );
+
+				if( time1.Val < (time0.Val-data_big_diff_time) ||
+					time1.Val > (time0.Val+data_big_diff_time) )
+				{
+                    time1 = time0;
+                }
+
+				if( !show_value_assembled && (data_ptr->current_arr_len&1) )
+					time1 -= data_word_time;
+				else
+				if(  show_value_assembled && (data_ptr->current_arr_len&1) )
+					time1 -= data_byte_time;
+				else
+				if( !show_value_assembled && !(data_ptr->current_arr_len&1) )
+					time1 += data_byte_time;
+
+				for( int i = 0; i < data_ptr->current_arr_len; i++ ) {
+					show_value_assembled = !show_value_assembled;
+
+					if( show_value_assembled )
+					{
+						show_value |= data_ptr->current_arr[i];
+
+						date_str = time1.FormatString("YYYY-MM-DD");
+						time_str = time1.FormatString("HH:nn:ss.zzz");
+
+						sprintf( mbstring, "%llu", DateTimeToUnix(time1) );
+						FileWrite(iFileHandle, mbstring, strlen(mbstring));
+						wcstombs( mbstring, time1.FormatString("zzz,").c_str(), MAX_SIZE);
+						FileWrite(iFileHandle, mbstring, strlen(mbstring));
+
+						wcstombs(mbstring,date_str.c_str(),MAX_SIZE);
+						FileWrite(iFileHandle, mbstring, strlen(mbstring));
+
+						FileWrite(iFileHandle, ",", 1);
+
+						wcstombs(mbstring,time_str.c_str(),MAX_SIZE);
+						FileWrite(iFileHandle, mbstring, strlen(mbstring));
+
+						FileWrite(iFileHandle, ",", 1);
+
+						sprintf(mbstring,"%d\n",show_value);
+						FileWrite(iFileHandle, mbstring, strlen(mbstring));
+
+						time1 += data_word_time;
+					}  else {
+						show_value = data_ptr->current_arr[i];
+						show_value <<= 8;
+					}
+				}
+				//dataSaved = true;
+				data_ptr = data_ptr->next;
+			}
+			UpdateScroll();
+			ScrollBar->Position = ScrollBar->Max - ScrollBar->PageSize;
 		}
 		FileClose(iFileHandle);
 	}
@@ -1046,7 +1173,7 @@ void __fastcall TMainForm::UpdateComBox()
 }
 
 int margin_left = 56;
-int margin_right = 52;
+int margin_right = 10;
 int margin_top = 15;
 int margin_bottom = 40;
 bool value_hinted = false;
@@ -1090,13 +1217,14 @@ void __fastcall TMainForm::ChartMouseMove(TObject *Sender, TShiftState Shift, in
 		Chart->Canvas->MoveTo( X, margin_top );
 		Chart->Canvas->LineTo( X, y_size-margin_bottom );
 
+		// Hint rectangle
 		Chart->Canvas->Brush->Color = clWhite;
-		Chart->Canvas->Rectangle(X+dx,Y+dy,X+dx+150,Y+dy+50);
+		Chart->Canvas->Rectangle(X+dx,Y+dy,X+dx+120,Y+dy+35);
 
-
+		// Hint text
 		Chart->Canvas->TextOutW(X+dx+10,Y+dy+5,L"Время: "+str);
 		Chart->Canvas->TextOutW(X+dx+10,Y+dy+17,L"Ток: "+FormatFloat("#", valy)+L" A");
-		Chart->Canvas->TextOutW(X+dx+10,Y+dy+29,L"Сопротивление: "+FormatFloat("#", valy2)+L" Ом");
+		//Chart->Canvas->TextOutW(X+dx+10,Y+dy+29,L"Сопротивление: "+FormatFloat("#", valy2)+L" Ом");
 	} else {
 		value_hinted = false;
 		Chart->Repaint();
