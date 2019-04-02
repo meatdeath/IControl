@@ -825,51 +825,117 @@ void __fastcall TMainForm::OpenActionExecute(TObject *Sender)
 	{
 		try
 		{
+			char ch = 0;
+
 			iFileHandle = FileOpen(OpenDialog->FileName, fmOpenRead);
 			iFileLength = FileSeek(iFileHandle,0,2);
+			FileSeek(iFileHandle,0,0);
 
-			if( (iFileLength%sizeof(DATA_BLOCK)) == 0 )
-			{
-				FileSeek(iFileHandle,0,0);
-				for( i = 0; i < iFileLength; i += iBytesRead )
+			// Skip first line
+
+			for( i = 0; i < iFileLength && ch != '\n'; i++ ) {
+				iBytesRead = FileRead( iFileHandle, &ch, 1 );
+			}
+
+			if( i < iFileLength ) {
+				DATA_BLOCK *tmp = new DATA_BLOCK;
+				memset( (char*)tmp, 0, sizeof(DATA_BLOCK) );
+				data_head = tmp;
+				data_tail = tmp;
+
+
+				int buf_len = 0;
+				WORD buf[256];
+				double prev_time_val = 0;
+
+				for( ; i < iFileLength; i += iBytesRead )
 				{
-					DATA_BLOCK *tmp = new DATA_BLOCK;
-					iBytesRead = FileRead( iFileHandle, tmp, sizeof(DATA_BLOCK) );
-					if( data_head == NULL ) {
-						data_tail = data_head = tmp;
+					__int64 time = 0;
+					double time_val;
+					for( ii = 0; ii < 20; ii++ ) {
+						iBytesRead = FileRead( iFileHandle, &ch, 1 );
+						i += iBytesRead;
+						if( iBytesRead != 1 || ch < '0' || ch > '9' ) {
+							break;
+						} else {
+							time *= 10;
+							time += ch-'0';
+						}
 					}
-					else
+					if( ch != ',' ) break;
+
+					time_val = time / (24.0*60.0*60.0*1000.0);
+					if( buf_len != 0 )
 					{
-						data_tail->next = tmp;
-						data_tail = tmp;
+						if( buf_len == 256 || (time_val - prev_time_val) >= (3.0 / (24.0*60.0*60.0*1000.0)) ){
+							BYTE *data_buf = new BYTE(buf_len*sizeof(WORD));
+							for( ii = 0; ii < buf_len; ii++ ) {
+								((WORD*)data_buf)[ii] = buf[ii]<<8 | buf[ii]>>8;
+							}
+							tmp->current_arr = data_buf;
+							tmp->current_arr_len = buf_len;
+							tmp = new DATA_BLOCK;
+							memset( (char*)tmp, 0, sizeof(DATA_BLOCK) );
+							tmp->time.Val = time_val;
+							buf_len = 0;
+
+							data_tail->next = tmp;
+							data_tail = tmp;
+						}
+					} else {
+                        tmp->time.Val = time_val;
+                    }
+
+					prev_time_val = time_val;
+
+
+					for( ii = 0; ii < 24; ii++ ) {
+						iBytesRead = FileRead( iFileHandle, &ch, 1 );
+						if( !iBytesRead ) break;
 					}
-					data_tail->next = NULL;
+					i+=ii;
+					if( ch != ',' ) break;
 
-
-					for( ii = 0; ii < DATA_SIZE; ii++, data_count++ )
-					{
-						TDateTime time;
-						UnicodeString time_str;
-						color = clGreen;
-						//value = data_tail->current_arr[i];
-						value = data_tail->current_arr[ii];
-						if( value >= 1000 ) color = clRed;
-						tick = ((double)ii*MEASURE_PERIOD_MS) / (MSEC_IN_DAY);
-						time = data_tail->time + tick;
-						time_str = time.TimeString();
-						CurrentSeries->AddXY( data_count, value, time_str, color );
-						//CurrentSeries->AddXY( (double)100, (double)10, "", clGreen );
+					WORD value = 0;
+					for( ii = 0; ii < 5; ii++ ) {
+						iBytesRead = FileRead( iFileHandle, &ch, 1 );
+						i += iBytesRead;
+						if( iBytesRead != 1 || ch < '0' || ch > '9' ) {
+							break;
+						} else {
+							value *= 10;
+							value += ch-'0';
+						}
 					}
+					if( ch != '\n' ) break;
 
+					buf[buf_len] = value;
+					buf_len++;
+
+					TColor color = clGreen;
+					if( value >= 1000 ) color = clRed;
+					double fValue = value;
+					TDateTime date_time;
+					date_time.Val = time_val;
+					UnicodeString time_str = date_time.FormatString("HH:nn:ss.zzz");
+					CurrentSeries->AddXY( data_count++, value, time_str, color );
+				}
+
+				if( buf_len > 0 ){
+					BYTE *data_buf = new BYTE(buf_len*sizeof(WORD));
+					for( ii = 0; ii < buf_len; ii++ ) {
+						((WORD*)data_buf)[ii] = buf[ii]<<8 | buf[ii]>>8;
+					}
+					tmp->current_arr = data_buf;
+					tmp->current_arr_len = buf_len;
+				}
+
+				if( data_count ) {
 					ScrollBar->Max = data_count;
 					UpdateScroll();
 					UpdateActionState( STATE_IDLE );
 				}
-			}
-			else
-			{
-				Application->MessageBox(((UnicodeString)"Can't read file! Data corrupted.").c_str(), ((UnicodeString)"File Error").c_str(), IDOK);
-			}
+            }
 			FileClose(iFileHandle);
 		}
 		catch(...)

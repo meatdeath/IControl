@@ -184,7 +184,6 @@ object MainForm: TMainForm
     OnMouseMove = ChartMouseMove
     OnMouseWheelDown = ChartMouseWheelDown
     OnMouseWheelUp = ChartMouseWheelUp
-    ExplicitHeight = 429
     PrintMargins = (
       15
       25
@@ -228,7 +227,6 @@ object MainForm: TMainForm
     TabOrder = 3
     TabStop = False
     OnChange = ScrollBarChange
-    ExplicitTop = 459
   end
   object Panel1: TPanel
     Left = 688
@@ -239,7 +237,6 @@ object MainForm: TMainForm
     Caption = 'Panel1'
     TabOrder = 4
     Visible = False
-    ExplicitHeight = 429
     object Memo1: TMemo
       Left = 1
       Top = 1
@@ -248,7 +245,6 @@ object MainForm: TMainForm
       Align = alClient
       ScrollBars = ssVertical
       TabOrder = 0
-      ExplicitHeight = 427
     end
   end
   object Menu: TMainMenu
@@ -376,7 +372,7 @@ object MainForm: TMainForm
     Left = 568
     Top = 8
     Bitmap = {
-      494C010112002400F40012001200FFFFFFFFFF10FFFFFFFFFFFFFFFF424D3600
+      494C010112002400F80012001200FFFFFFFFFF10FFFFFFFFFFFFFFFF424D3600
       0000000000003600000028000000480000005A00000001002000000000004065
       0000000000000000000000000000000000000000000000000000000000000000
       0000000000000000000000000000000000000000000000000000000000000000
